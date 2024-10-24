@@ -1,116 +1,129 @@
 import tkinter as tk
-from tkinter import messagebox
-import psycopg2
-from login import iniciar_login
-from pages.ingreso_pago import crear_ingreso_pago
-from pages.ingreso_comisionista import crear_ingreso_comisionista
-from pages.ingreso_lote import crear_ingreso_lote
-from pages.ver_lotes import crear_ver_lotes
+from login import LoginPage
+import pages.ingreso_pago as p
+import pages.ingreso_comisionista as c 
+import pages.ingreso_lote as l
+import pages.ver_lotes as vl
 
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.geometry('1280x720')
+        self.title('App con Expandable Menu')
+        self.center_window()
 
-# Función para centrar la ventana en la pantalla
-def centrar_ventana(ventana, ancho, alto):
-    # Calcular la posición x, y
-    pantalla_ancho = ventana.winfo_screenwidth()
-    pantalla_alto = ventana.winfo_screenheight()
-    x = (pantalla_ancho // 2) - (ancho // 2)
-    y = (pantalla_alto // 2) - (alto // 2)
-    ventana.geometry(f'{ancho}x{alto}+{x}+{y}')
+        self.menu_colapsado = False
 
-# Función para cambiar entre las páginas
-def mostrar_pagina(frame):
-    frame.tkraise()  # Mover el frame seleccionado al frente
+        # Mostrar la pantalla de Login primero
+        self.show_login()
 
-# Función para cerrar sesión
-def cerrar_sesion(ventana_principal):
-    ventana_principal.destroy()
-    iniciar_login(abrir_menu_principal)
+    def center_window(self):
+        self.update_idletasks()
+        width = 1280
+        height = 720
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        self.geometry(f'{width}x{height}+{x}+{y}')
 
-# Función para crear el menú principal colapsable
-def abrir_menu_principal():
-    ventana_principal = tk.Tk()
-    ventana_principal.title('Menú Principal')
-    centrar_ventana(ventana_principal, 1280, 720)
-    ventana_principal.resizable(False, False)
+    def show_login(self):
+        self.login_page = LoginPage(self, self.on_login_success)
+        self.login_page.pack(fill="both", expand=True)
 
-    # Frame del menú lateral
-    menu_frame = tk.Frame(ventana_principal, bg="lightgray", width=200)
-    menu_frame.pack(side="left", fill="y")
+    def on_login_success(self):
+        self.login_page.destroy()
+        self.create_main_app()
 
-    # Frame para el botón de colapsar
-    btn_frame = tk.Frame(menu_frame, bg="lightgray")
-    btn_frame.pack(side="top", fill="x")
+    def create_main_app(self):
+        # Configurar las columnas del grid
+        self.grid_columnconfigure(0, weight=0)  # Menú
+        self.grid_columnconfigure(1, weight=1)  # Contenido
 
-    # Botón para colapsar/expandir el menú
-    btn_toggle = tk.Button(menu_frame, text="<<", command=lambda: toggle_menu(menu_frame, btn_toggle), width=3)
-    btn_toggle.pack(pady=10)
+        # Frame del menú expandible
+        self.menu_frame = tk.Frame(self, bg="lightgrey")
+        self.menu_frame.grid(row=0, column=0, sticky='ns')  # Expande el menú de arriba a abajo
+        self.menu_frame.grid_propagate(False)
+        self.menu_frame.config(width=150, height=720)
 
-    # Frame contenedor de las páginas
-    contenido_frame = tk.Frame(ventana_principal)
-    contenido_frame.pack(side="right", expand=True, fill="both")
+        # Crear un grid layout para el menú
+        self.menu_frame.grid_rowconfigure(0, weight=0)  # Botón de expandir/colapsar menú
+        self.menu_frame.grid_rowconfigure(1, weight=0)
+        self.menu_frame.grid_rowconfigure(2, weight=0)
+        self.menu_frame.grid_rowconfigure(3, weight=0)
+        self.menu_frame.grid_rowconfigure(4, weight=0)
+        self.menu_frame.grid_rowconfigure(5, weight=1)  # Rellena el espacio vertical
+        self.menu_frame.grid_rowconfigure(6, weight=0)  # Botón de cerrar sesión
 
-    # Crear las 4 páginas dentro de frames
-    pagina1 = crear_ingreso_pago(contenido_frame)
-    pagina2 = crear_ingreso_comisionista(contenido_frame)
-    pagina3 = crear_ingreso_lote(contenido_frame)
-    pagina4 = crear_ver_lotes(contenido_frame)
+        # Botón de colapsar/expandir menú
+        self.btn_toggle_menu = tk.Button(self.menu_frame, text='<<', command=self.toggle_menu)
+        self.btn_toggle_menu.grid(row=0, column=0, pady=10, sticky="w")
 
-    # Mostrar la página 1 al inicio
-    mostrar_pagina(pagina1)
+        # Botones de navegación del menú
+        self.btn_page1 = tk.Button(self.menu_frame, text="Página 1", command=self.mostrar_pagina1)
+        self.btn_page1.grid(row=1, column=0, pady=10, sticky="w")
+        self.btn_page2 = tk.Button(self.menu_frame, text="Página 2", command=self.mostrar_pagina2)
+        self.btn_page2.grid(row=2, column=0, pady=10, sticky="w")
+        self.btn_page3 = tk.Button(self.menu_frame, text="Página 3", command=self.mostrar_pagina3)
+        self.btn_page3.grid(row=3, column=0, pady=10, sticky="w")
+        self.btn_page4 = tk.Button(self.menu_frame, text="Página 4", command=self.mostrar_pagina4)  # Botón de la página 4
+        self.btn_page4.grid(row=4, column=0, pady=10, sticky="w")
 
-    # Botones del menú lateral para cambiar de página
-    global btn_pagina1, btn_pagina2, btn_pagina3, btn_pagina4
+        # Botón de cerrar sesión, anclado al fondo
+        self.btn_logout = tk.Button(self.menu_frame, text="Cerrar Sesión", command=self.logout)
+        self.btn_logout.grid(row=6, column=0, pady=10, sticky="s")  # Anclado al fondo con sticky='s'
 
-    btn_pagina1 = tk.Button(menu_frame, text="Página 1", command=lambda: mostrar_pagina(pagina1), width=20)
-    btn_pagina1.pack(pady=10)
+        # Frame del contenido donde se cargarán las páginas
+        self.contenido_frame = tk.Frame(self)
+        self.contenido_frame.grid(row=0, column=1, sticky='nsew')
+        self.contenido_frame.columnconfigure(0, weight=1)
 
-    btn_pagina2 = tk.Button(menu_frame, text="Página 2", command=lambda: mostrar_pagina(pagina2), width=20)
-    btn_pagina2.pack(pady=10)
+        self.mostrar_pagina1()
 
-    btn_pagina3 = tk.Button(menu_frame, text="Página 3", command=lambda: mostrar_pagina(pagina3), width=20)
-    btn_pagina3.pack(pady=10)
+    def toggle_menu(self):
+        if self.menu_colapsado:
+            self.menu_frame.config(width=200)
+            self.btn_toggle_menu.config(text='<<')
+            self.btn_page1.config(text="Página 1")
+            self.btn_page2.config(text="Página 2")
+            self.btn_page3.config(text="Página 3")
+            self.btn_page4.config(text="Página 4")  # Expandir texto de página 4
+            self.btn_logout.config(text="Cerrar Sesión")
+        else:
+            self.menu_frame.config(width=50)
+            self.btn_toggle_menu.config(text='>>')
+            self.btn_page1.config(text="P1")
+            self.btn_page2.config(text="P2")
+            self.btn_page3.config(text="P3")
+            self.btn_page4.config(text="P4")  # Contraer texto de página 4
+            self.btn_logout.config(text="CS")
 
-    btn_pagina4 = tk.Button(menu_frame, text="Página 4", command=lambda: mostrar_pagina(pagina4), width=20)
-    btn_pagina4.pack(pady=10)
+        self.menu_colapsado = not self.menu_colapsado
 
-    # Botón para cerrar sesión
-    btn_cerrar_sesion = tk.Button(menu_frame, text="Cerrar Sesión", command=lambda: cerrar_sesion(ventana_principal), width=20, bg="red", fg="white")
-    btn_cerrar_sesion.pack(pady=50)
+    def mostrar_pagina1(self):
+        for widget in self.contenido_frame.winfo_children():
+            widget.destroy()
+        p.crear_ingreso_pago(self.contenido_frame)
 
-    ventana_principal.mainloop()
+    def mostrar_pagina2(self):
+        for widget in self.contenido_frame.winfo_children():
+            widget.destroy()
+        c.crear_ingreso_comisionista(self.contenido_frame)
 
-# Función para alternar el menú entre colapsado y expandido
-def toggle_menu(menu_frame, toggle_button):
-    if menu_frame.winfo_width() > 50:  # Si el menú está expandido
-        menu_frame.config(width=50)
-        toggle_button.config(text=">>")  # Cambiar el texto del botón
-        for widget in menu_frame.winfo_children()[1:]:  # Colapsar todos los widgets excepto el botón
-            if menu_frame.winfo_children().index(widget) == 1:
-                continue
+    def mostrar_pagina3(self):
+        for widget in self.contenido_frame.winfo_children():
+            widget.destroy()
+        l.crear_ingreso_lote(self.contenido_frame)
 
-            elif menu_frame.winfo_children().index(widget) == (len(menu_frame.winfo_children()) - 1):
-                btnText = 'Salir'
+    def mostrar_pagina4(self):  # Función para cargar la página 4
+        for widget in self.contenido_frame.winfo_children():
+            widget.destroy()
+        vl.crear_ver_lotes(self.contenido_frame)
 
-            else:
-                btnText = 'P', menu_frame.winfo_children().index(widget) - 1
+    def logout(self):
+        self.destroy()
+        self.__init__()
 
-            widget.config(width=5, text=btnText)  # Hacer los botones más pequeños
-            widget.pack(pady=5)
-            
-    else:  # Si el menú está colapsado
-        menu_frame.config(width=200)
-        toggle_button.config(text="<<")  # Cambiar el texto del botón
-        for widget in menu_frame.winfo_children()[1:]:  # Expandir todos los widgets
-            if menu_frame.winfo_children().index(widget) == 1:
-                continue
-
-            elif menu_frame.winfo_children().index(widget) == (len(menu_frame.winfo_children()) - 1):
-                btnText = 'Cerrar Sesión'
-
-            else:
-                btnText = 'Página', menu_frame.winfo_children().index(widget) - 1
-            widget.config(width=20, text= btnText)  # Restaurar el ancho original de los botones
-            widget.pack(pady=10)
-
-# Iniciar la aplicación desde la ventana de login
-iniciar_login(abrir_menu_principal)
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
