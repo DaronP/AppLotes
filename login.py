@@ -1,37 +1,49 @@
 import tkinter as tk
 from tkinter import messagebox
+from db import execute_query, execute_non_query
 
 class LoginPage(tk.Frame):
-    def __init__(self, parent, on_login_success):
-        super().__init__(parent)
-        self.on_login_success = on_login_success
+    def __init__(self, parent, conn, on_login_success):
         self.parent = parent
-        self.create_widgets()
+        self.on_login_success = on_login_success
 
-    def create_widgets(self):
-        self.label_user = tk.Label(self, text="Usuario:")
-        self.label_user.grid(row=0, column=0, padx=10, pady=10)
-        self.entry_user = tk.Entry(self)
-        self.entry_user.grid(row=0, column=1, padx=10, pady=10)
+        # Configurar el tamaño y centrar el contenido de la ventana de login
 
-        self.label_password = tk.Label(self, text="Contraseña:")
-        self.label_password.grid(row=1, column=0, padx=10, pady=10)
-        self.entry_password = tk.Entry(self, show="*")
-        self.entry_password.grid(row=1, column=1, padx=10, pady=10)
+        # Frame para contener los campos de login y centrarlos
+        login_frame = tk.Frame(self.parent)
+        login_frame.pack(expand=True)  # Expand para centrar en la ventana
 
-        self.login_button = tk.Button(self, text="Login", command=self.check_credentials)
-        self.login_button.grid(row=2, column=0, columnspan=2, pady=10)
+        # Crear los campos de entrada con pack() para un diseño centrado
+        tk.Label(login_frame, text="Usuario:").pack(anchor="w", pady=5)
+        self.username_entry = tk.Entry(login_frame)
+        self.username_entry.pack(fill="x", pady=5)
 
-        # Login on pressing Enter
-        self.entry_password.bind('<Return>', lambda event: self.check_credentials())
+        tk.Label(login_frame, text="Contraseña:").pack(anchor="w", pady=5)
+        self.password_entry = tk.Entry(login_frame, show="*")
+        self.password_entry.pack(fill="x", pady=5)
 
-    def check_credentials(self):
-        # Dummy credentials
-        username = self.entry_user.get()
-        password = self.entry_password.get()
-        if username == "admin" and password == "admin123" or username == "" and password == "":
+        # Botón de login
+        self.login_button = tk.Button(login_frame, text="Iniciar Sesión", command=self.verify_credentials())
+        self.login_button.pack(pady=10)
+
+        # Asegurarse de que el botón responda al presionar 'Enter'
+        self.username_entry.bind("<Return>", lambda event: self.verify_credentials())
+        self.password_entry.bind("<Return>", lambda event: self.verify_credentials())
+
+    def verify_credentials(self):
+        # Lógica de verificación de credenciales
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+
+        #result = execute_query(conn, 'SELECT * FROM usuarios WHERE usuario = %s AND contrasena = %s', (username, password))
+
+        # Validación simple de credenciales
+        if username == "admin" and password == "password" or username == "" and password == "":
             self.on_login_success()
         else:
-            messagebox.showerror("Error", "Credenciales Incorrectas")
+            self.show_error("Credenciales incorrectas")
 
-# main_app.py can call `LoginPage` before opening the rest of the app.
+    def show_error(self, message):
+        # Mostrar el mensaje de error
+        messagebox.showinfo("Error", message)
+
