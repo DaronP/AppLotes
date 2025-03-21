@@ -153,16 +153,11 @@ def generar_reportes(conn, contenedor):
 
     # Consulta ejemplo:
     query_lotes_vendidos = """
-        SELECT cp.lote_id,
-               cp.fecha_compra AS fecha_venta,
-               cl.nombre AS cliente_nombre,
-               (cp.saldo_actual) AS saldo_o_pago
+        SELECT cp.lote_id, MIN(cp.fecha_compra) AS fecha_venta, cl.nombre AS cliente_nombre, MAX(cp.saldo_actual) AS saldo_acumulado
         FROM control_pagos cp
         JOIN clientes cl ON cp.cliente_id = cl.cliente_id
-        -- Suponiendo 'lotes' se marca como disponible='N' cuando se vende, 
-        -- o se podría filtrar con otra condición
-        -- JOIN lotes l ON cp.lote_id = l.lote_id
-        ORDER BY cp.fecha_compra
+        GROUP BY cp.lote_id, cl.nombre
+        ORDER BY MIN(cp.fecha_compra)
     """
     resultados_lotes = execute_query(conn, query_lotes_vendidos)
 

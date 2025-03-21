@@ -91,9 +91,12 @@ def cargar_datos(conn, tree):
         terreno = fila['terreno'] if isinstance(fila, dict) else fila[5]
         disponible = fila['disponible'] if isinstance(fila, dict) else fila[6]
         propietario = fila['propietario'] if isinstance(fila, dict) else fila[7]
-
-        propietario_nombre = execute_query(conn, 'SELECT nombre FROM clientes WHERE cliente_id = %s', (propietario))
-        propietario_nombre = propietario_nombre[0]['valor'] if isinstance(propietario_nombre[0], dict) else propietario_nombre[0][0]
+        
+        try:
+            propietario_nombre = execute_query(conn, 'SELECT nombre FROM clientes WHERE cliente_id = %s', (propietario))
+            propietario_nombre = propietario_nombre[0]['valor'] if isinstance(propietario_nombre[0], dict) else propietario_nombre[0][0]
+        except:
+            propietario_nombre = "-"
 
         if disponible == 1:
             disponible = 'Si'

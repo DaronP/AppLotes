@@ -3,6 +3,9 @@ from tkinter import ttk, messagebox
 from tkcalendar import DateEntry
 from db import execute_query, execute_non_query
 import datetime
+import os
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 def crear_ingreso_pago(parent, conn):
     """
@@ -71,10 +74,6 @@ def crear_ingreso_pago(parent, conn):
     entry_plan_anual = tk.Entry(frame)
     entry_plan_anual.grid(row=6, column=1, padx=5, pady=5, sticky="w")
 
-    tk.Label(frame, text="No. Recibo:", bg='#9A9898').grid(row=7, column=0, padx=5, pady=5, sticky="e")
-    entry_recibo = tk.Entry(frame)
-    entry_recibo.grid(row=7, column=1, padx=5, pady=5, sticky="w")
-
     tk.Label(frame, text="Monto Recibido:", bg='#9A9898').grid(row=8, column=0, padx=5, pady=5, sticky="e")
     entry_monto_recibido = tk.Entry(frame)
     entry_monto_recibido.grid(row=8, column=1, padx=5, pady=5, sticky="w")
@@ -142,7 +141,6 @@ def crear_ingreso_pago(parent, conn):
             entry_fecha_compra.get(),     # fecha
             entry_plan_anual.get(),       # plan en años
             lbl_pago_mensual['text'],      # calculado
-            entry_recibo.get(),
             lbl_saldo_actual['text'],
             lbl_mensualidad_no['text'],
             entry_tipo_pago.get(),
@@ -390,7 +388,6 @@ def guardar_control_pagos(parent,
     fecha_compra,
     plan_anual_str,
     pago_mensual_str,
-    recibo,
     saldo_actual,
     mensualidad,
     tipo_pago,
@@ -426,13 +423,7 @@ def guardar_control_pagos(parent,
         messagebox.showerror("Error", "No se pudo obtener id_lote.")
         return
 
-    # Convertir numéricos
-    try:
-        recibo = int(recibo)
-    except:
-        messagebox.showerror("Error", "No se pudo obtener recibo.")
-        return
-    
+    # Convertir numéricos    
     try:
         monto_recibido = float(monto_recibido_str)
     except:
@@ -443,15 +434,7 @@ def guardar_control_pagos(parent,
     except:
         plan_anual = 0.0
 
-    try:
-        valor_lote = float(valor_lote_str.replace(",", ""))  # Por si tiene comas
-    except:
-        valor_lote = 0.0
-
-    try:
-        valor_total = float(valor_total_str.replace(",", ""))
-    except:
-        valor_total = valor_lote
+    valor_total = float(valor_total_str.replace(",", "").replace("Q", ""))
 
     try:
         pago_mensual = float(pago_mensual_str.replace(",", ""))
@@ -500,7 +483,6 @@ def guardar_control_pagos(parent,
         mensualidad,
         fecha_ultimo_pago,
         valor_total,
-        num_recibo_fisico,
         tipo_pago,
         notas
     ) VALUES (
@@ -517,7 +499,6 @@ def guardar_control_pagos(parent,
         %s, 
         %s,
         %s, 
-        %s,
         %s,
         %s
     )
@@ -536,7 +517,6 @@ def guardar_control_pagos(parent,
         mensualidad,
         fecha_ultimo_pago,
         valor_total,
-        recibo,
         tipo_pago,
         notas
     )
@@ -545,185 +525,100 @@ def guardar_control_pagos(parent,
     execute_non_query(conn, 'UPDATE lotes SET disponible = %s, propietario = %s WHERE lote_id = %s', (False, id_cliente, id_lote))
     messagebox.showinfo("Guardado", "Datos guardados satisfactoriamente.")
     # Volver a crear la página 1
+    generar_recibo(conn, id_cliente, id_comisionista, id_lote, valor_total, monto_recibido, fecha_compra, saldo_actual)
     crear_ingreso_pago(parent, conn)
 
 
-"""
-def crear_ingreso_pago(parent, conn):
-    # Crear el frame donde estarán los elementos de la página 1
-    frame = tk.Frame(parent, bg='#9A9898')
-    frame.place(relwidth=1, relheight=1)  # Expandir el frame al tamaño completo del contenedor
-    tk.Label(frame, text="Ingreso de pagos", font=('Arial', 18), bg='#9A9898').place(relx=0.4, rely=0.03)
+def generar_recibo(conn, id_cliente, id_comisionista, id_lote, valor_total, monto_recibido, fecha_compra, saldo_actual):
+    """
+    Genera un recibo de venta y lo muestra en una ventana emergente.
+    También lo guarda como un archivo PDF para impresión.
+    """
 
-    style = ttk.Style()
-    style.theme_use("clam")
+    nombre_cliente = execute_query(conn, 'SELECT nombre FROM clientes WHERE cliente_id = %s', (id_cliente))
+    nombre_cliente = nombre_cliente[0]['valor'] if isinstance(nombre_cliente[0], dict) else nombre_cliente[0][0]
 
-    # Labels actualizables
-    label0 = tk.Label(frame, text="Nombre: ", bg='#9A9898')
-    label1 = tk.Label(frame, text="Saldo Inicial: ", bg='#9A9898')
-    label2 = tk.Label(frame, text="Fecha de Compra: ", bg='#9A9898')
-    label3 = tk.Label(frame, text="Mensualidad: ", bg='#9A9898')
-    label4 = tk.Label(frame, text="Valor Total: ", bg='#9A9898')
-    label5 = tk.Label(frame, text="Saldo Actual: ", bg='#9A9898')
-    label6 = tk.Label(frame, text="Comisionista: ", bg='#9A9898')
+    dpi_comisionista = execute_query(conn, 'SELECT nombre FROM comisionistas WHERE com_id = %s', (id_comisionista))
+    dpi_comisionista = dpi_comisionista[0]['valor'] if isinstance(dpi_comisionista[0], dict) else dpi_comisionista[0][0]
 
-    # Crear elementos de entrada (Drop-downs y selector de fecha)
-    tk.Label(frame, text="DPI cliente", bg='#9A9898').place(relx=0.005, rely=0.15)
-    option1 = ttk.Combobox(frame)
-    option1.place(relx=0.095, rely=0.15, relwidth=0.2)
+    recibo_num = execute_query(conn, 'SELECT pago_id FROM control_pagos WHERE lote_id = %s AND cliente_id = %s and fecha_compra = %s', (id_lote, id_cliente, fecha_compra))
+    recibo_num = recibo_num[0]['valor'] if isinstance(recibo_num[0], dict) else recibo_num[0][0]
 
-    tk.Label(frame, text="Lote", bg='#9A9898').place(relx=0.005, rely=0.2)
-    option2 = ttk.Combobox(frame, state='readonly')
-    option2.place(relx=0.095, rely=0.2, relwidth=0.2)
+    # Crear ventana emergente
+    recibo_window = tk.Toplevel()
+    recibo_window.title("Recibo de Venta")
+    recibo_window.geometry("400x450")
+
+    texto_recibo = (
+        f"---- RECIBO DE VENTA ----\n\n"
+        f"Recibo No. {recibo_num}\n"
+        f"Fecha: {fecha_compra}\n"
+        f"Cliente: {nombre_cliente}\n"
+        f"Comisionista: {dpi_comisionista}\n"
+        f"Lote ID: {id_lote}\n"
+        f"Valor Total del Lote: Q{valor_total:,.2f}\n"
+        f"Monto Pagado: Q{monto_recibido:,.2f}\n"
+        
+        f"Saldo Pendiente: Q{valor_total - saldo_actual:,.2f}\n"
+    )
+
+    tk.Label(recibo_window, text=texto_recibo, justify="left", font=("Arial", 12)).pack(pady=10)
+
+    # Botón para imprimir
+    btn_imprimir = tk.Button(
+        recibo_window, text="Guardar & Imprimir Recibo", command=lambda: guardar_recibo_pdf(
+            nombre_cliente, dpi_comisionista, id_lote, valor_total, monto_recibido, fecha_compra, saldo_actual, recibo_num
+        )
+    )
+    btn_imprimir.pack(pady=10)
+
+def guardar_recibo_pdf(id_cliente, id_comisionista, id_lote, valor_total, monto_recibido, fecha_compra, saldo_actual, recibo_num):
+    """
+    Genera un PDF del recibo y lo guarda en la carpeta de recibos.
+    """
+    if not os.path.exists("recibos"):
+        os.makedirs("recibos")
+
+    file_path = f"recibos/recibo_{id_cliente}_L{id_lote}_{fecha_compra}.pdf"
+    file_path = file_path.replace(" ", "_")
+
+    c = canvas.Canvas(file_path, pagesize=letter)
+    c.setFont("Helvetica", 12)
+
+    c.drawString(100, 750, "RECIBO DE VENTA LAS TRINITARIAS")
+    c.drawString(100, 730, f"No. {recibo_num}")
+    c.drawString(100, 710, f"Fecha: {fecha_compra}")
+    c.drawString(100, 690, f"Nombre cliente: {id_cliente}")
+    c.drawString(100, 670, f"Nombre comisionista: {id_comisionista}")
+    c.drawString(100, 650, f"Lote: {id_lote}")
+    c.drawString(100, 630, f"Valor Total del Lote: Q{valor_total:,.2f}")
+    c.drawString(100, 610, f"Monto Pagado: Q{monto_recibido:,.2f}")
+    c.drawString(100, 580, f"Saldo Pendiente: Q{valor_total - saldo_actual:,.2f}")
 
     
-
-    cargar_datos_combobox(conn, option1, option2) 
-
-
-    #Resto de ingresos
-
-    tk.Label(frame, text="Monto", bg='#9A9898').place(relx=0.005, rely=0.55)
-    text1 = ttk.Entry(frame)
-    text1.place(relx=0.095, rely=0.55, relwidth=0.2)
-
-    tk.Label(frame, text="Mensualidad", bg='#9A9898').place(relx=0.005, rely=0.6)
-    text2 = ttk.Entry(frame)
-    text2.place(relx=0.095, rely=0.6, relwidth=0.2)
-
-    tk.Label(frame, text="No. Recibo", bg='#9A9898').place(relx=0.005, rely=0.65)
-    text3 = ttk.Entry(frame)
-    text3.place(relx=0.095, rely=0.65, relwidth=0.2)
-
-    tk.Label(frame, text="Fecha", bg='#9A9898').place(relx=0.005, rely=0.7)
-    date_selector = DateEntry(frame)
-    date_selector.place(relx=0.095, rely=0.7, relwidth=0.2)
-
-    #Verify button
-    submit_button = tk.Button(frame, text="Verificar Información", 
-                              command=lambda: verify(conn, parent, option1, option2, label0, label1, label2, label3, label4, label5, label6, frame))
-    submit_button.place(relx=0.005, rely=0.3)
-
-    # Botón para ingresar datos
-    label7 = tk.Label(frame, text="", bg='#9A9898')
-    submit_button = tk.Button(frame, text="Ingresar Datos", 
-                              command=lambda: ingresar_datos(option1, option2, date_selector, label0, label1, label2, label3, label4, label5, label6, label7))
-    submit_button.place(relx=0.005, rely=0.85)
+    c.drawString(100, 520, "Firma Cliente: _______________")
+    c.drawString(300, 520, "Firma Vendedor: _______________")
 
 
-    # Colocar los labels actualizables con posiciones relativas
-    label0.place(relx=0.5, rely=0.1)
-    label1.place(relx=0.5, rely=0.15)
-    label2.place(relx=0.5, rely=0.2)
-    label3.place(relx=0.5, rely=0.25)
-    label4.place(relx=0.5, rely=0.3)
-    label5.place(relx=0.5, rely=0.35)
-    label6.place(relx=0.5, rely=0.4)
-    label7.place(relx=0.1, rely=0.85)
+    c.drawString(100, 380, "---------------------------------------------")
+    c.drawString(100, 260, "RECIBO DE VENTA LAS TRINITARIAS")
+    c.drawString(100, 240, f"No. {recibo_num}")
+    c.drawString(100, 220, f"Fecha: {fecha_compra}")
+    c.drawString(100, 200, f"Nombre cliente: {id_cliente}")
+    c.drawString(100, 180, f"Nombre comisionista: {id_comisionista}")
+    c.drawString(100, 160, f"Lote: {id_lote}")
+    c.drawString(100, 140, f"Valor Total del Lote: Q{valor_total:,.2f}")
+    c.drawString(100, 120, f"Monto Pagado: Q{monto_recibido:,.2f}")
+    c.drawString(100, 90, f"Saldo Pendiente: Q{valor_total - saldo_actual:,.2f}")
 
-    return frame
-
-def cargar_datos_combobox(conn, option1, option2):
-    # Consulta para obtener la información (ajusta según tu tabla y columna)
-    resultados_cli = execute_query(conn, "SELECT dpi FROM clientes")
-    resultados_lote = execute_query(conn, "SELECT lote_id FROM lotes")
-
-    # Convertir los resultados en una lista de valores
-    lista_clientes = []
-    for fila in resultados_cli:
-        if isinstance(fila, dict):
-            lista_clientes.append(fila['nombre'])
-        else:
-            lista_clientes.append(fila[0])
     
-    lista_lotes = []
-    for fila in resultados_lote:
-        if isinstance(fila, dict):
-            lista_lotes.append(fila['lote'])
-        else:
-            lista_lotes.append(fila[0])
+    c.drawString(100, 40, "Firma Cliente: _______________")
+    c.drawString(300, 40, "Firma Vendedor: _______________")
 
-    # Asignar la lista resultante al Combobox
-    option1['values'] = lista_clientes
-    option2['values'] = lista_lotes
+    c.save()
+    
+    messagebox.showinfo("Recibo Guardado", f"El recibo ha sido guardado en {file_path}")
 
-
-def verify(conn, parent, option1, option2, label0, label1, label2, label3, label4, label5, label6, frame):
-    resultados_cli = execute_query(conn, "SELECT * FROM clientes WHERE dpi = %s", (option1.get()))
-    if not resultados_cli:
-        respuesta = messagebox.askyesno("Cliente no encontrado", "Datos del cliente ingresado no fueron encontrados. ¿Desea ingresar los nuevos datos?")
-        if respuesta:
-            ventana_datos = tk.Toplevel(parent)
-            ventana_datos.title("Ingresar Datos Personales")
-
-            tk.Label(ventana_datos, text="Nombre:").grid(row=0, column=0, sticky="e", padx=10, pady=5)
-            entry_nombre = tk.Entry(ventana_datos)
-            entry_nombre.grid(row=0, column=1, sticky="w", padx=10, pady=5)
-
-            tk.Label(ventana_datos, text="DPI:").grid(row=1, column=0, sticky="e", padx=10, pady=5)
-            entry_dpi = tk.Entry(ventana_datos)
-            entry_dpi.grid(row=1, column=1, sticky="w", padx=10, pady=5)
-
-            tk.Label(ventana_datos, text="Dirección:").grid(row=2, column=0, sticky="e", padx=10, pady=5)
-            entry_direccion = tk.Entry(ventana_datos)
-            entry_direccion.grid(row=2, column=1, sticky="w", padx=10, pady=5)
-
-            # Botón para guardar o procesar los datos
-            btn_guardar = tk.Button(
-                ventana_datos, 
-                text="Guardar",
-                command=lambda: guardar_datos(conn, parent, frame, entry_dpi.get(), entry_nombre.get(), entry_direccion.get(), ventana_datos)
-            )
-            btn_guardar.grid(row=3, column=0, columnspan=2, pady=10)
-    else:
-        if option2.get():
-            cargar_lotes = execute_query(conn, "SELECT c.lote_id FROM control_pagos c JOIN clientes cli ON c.cliente_id = cli.cliente_id WHERE cli.dpi = %s ORDER BY c.lote_id ASC;", (option1.get()))
-            lista_lotes = []
-            for fila in cargar_lotes:
-                if isinstance(fila, dict):
-                    lista_lotes.append(fila['lote'])
-                else:
-                    lista_lotes.append(fila[0])
-
-            # Asignar la lista resultante al Combobox
-            option2['values'] = lista_lotes
-
-        else:
-            resultados_lote = execute_query(conn, "SELECT *, cli.nombre as 'nombre_cliente' FROM control_pagos c JOIN clientes cli ON c.cliente_id = cli.cliente_id JOIN lotes l ON c.lote_id = l.lote_id WHERE cli.dpi = %s AND l.lote_id = %s;", (option1.get(), option2.get()))
-            if not resultados_lote:
-                messagebox.showinfo('Nuevo cliente', 'Datos de factura no encontrados, cliente nuevo.')
-                option2['values'] = []
-
-
-    label0.config(text=f"Nombre: ")
-    label1.config(text=f"Saldo Inicial: ")
-    label2.config(text=f"Fecha de Compra: ")
-    label3.config(text=f"Mensualidad: ")
-    label4.config(text=f"Valor Total: ")
-    label5.config(text=f"Saldo Actual: ")
-    label6.config(text=f"Comisionista: ")
-
-def ingresar_datos(option1, option2, date_selector, label0,  label1, label2, label3, label4, label5, label6, label7):
-    # Actualizar los labels con los valores seleccionados
-    label0.config(text=f"Nombre: ")
-    label1.config(text=f"Saldo Inicial: ")
-    label2.config(text=f"Fecha de Compra: ")
-    label3.config(text=f"Mensualidad: ")
-    label4.config(text=f"Valor Total: ")
-    label5.config(text=f"Saldo Actual: ")
-    label6.config(text=f"Comisionista: ")
-    label7.config(text="Datos ingresados correctamente")
-
-def guardar_datos(conn, parent, page1_frame, dpi, nombre, direccion, ventana):
-    execute_non_query(conn, "INSERT INTO clientes(dpi, nombre, direccion) VALUES(%s, %s, %s)", (dpi, nombre, direccion))
-
-    # Destruir el frame actual de la página 1
-    page1_frame.destroy()
-    # Volver a crear la página 1
-    crear_ingreso_pago(parent, conn)
-
-    ventana.destroy()
-
-
-"""
+    # Intentar abrir el archivo para vista previa
+    os.system(f"start {file_path}" if os.name == "nt" else f"open {file_path}")
 
