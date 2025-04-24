@@ -71,8 +71,9 @@ def crear_ingreso_pago(parent, conn):
     entry_tipo_pago['values'] = ['Efectivo', 'Cheque', 'Transferencia/Deposito']
 
     tk.Label(frame, text="Plan Anual (años):", bg='#9A9898').grid(row=6, column=0, padx=5, pady=5, sticky="e")
-    entry_plan_anual = tk.Entry(frame)
+    entry_plan_anual = ttk.Combobox(frame, state='readonly')
     entry_plan_anual.grid(row=6, column=1, padx=5, pady=5, sticky="w")
+    entry_plan_anual['values'] = ['Contado', '6 meses', '1 año', '2 años', '3 años', '4 años', '5 años', '6 años', '7 años', '8 años', '9 años', '10 años']
 
     tk.Label(frame, text="Monto Recibido:", bg='#9A9898').grid(row=8, column=0, padx=5, pady=5, sticky="e")
     entry_monto_recibido = tk.Entry(frame)
@@ -291,6 +292,13 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
     valor_base = res[0]['valor'] if isinstance(res[0], dict) else res[0][0]
 
     # Convertir plan_anual a float o int
+
+    plan_str = plan_anual_str.get()
+
+    if ' años' in plan_str:
+        plan_str = plan_str.replace(' años', '')
+           
+
     try:
         plan_anual_res = execute_query(conn, 'SELECT plan_anual FROM control_pagos WHERE cliente_id = %s AND lote_id = %s ORDER BY saldo_actual DESC LIMIT 1', (cliente_id, lote_id))
         
@@ -300,10 +308,9 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
             plan_anual_str.delete(0, 'end')
             plan_anual_str.insert(0, plan_anual)
         else:
-            plan_anual = float(plan_anual_str.get())
+            plan_anual = float(plan_str)
     except:
-        messagebox.showerror("Error", "Plan Anual debe ser numérico.")
-        return
+        plan_anual = 0
     
 
     lote_disponible = execute_query(conn, 'SELECT disponible FROM lotes WHERE lote_id = %s', lote_id)
@@ -317,21 +324,27 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
 
     '''
     --------------------------------------------------
-    Correccion aca
+    INTERESES
     --------------------------------------------------
     '''
 
     # EJEMPLO de factor de interés
     # Factor simple: 10% por cada 5 años
-    factor = 1 + 0.10*(plan_anual/5.0)
+    factor = 1 + (0.13*plan_anual)
     valor_total = float(valor_base) * factor
 
     # Calcular un pago mensual aproximado
     # Mensualidades = plan_anual * 12
-    mensualidades = plan_anual * 12
+    if plan_anual == 0:
+        mensualidades = 6
+    else:
+        mensualidades = plan_anual * 12
+    if plan_str == 'Contado':
+        mensualidades = 1
     pago_mensual = 0
     if mensualidades > 0:
         pago_mensual = valor_total / mensualidades
+        
 
     '''
     --------------------------------------------------
