@@ -122,7 +122,7 @@ def crear_ingreso_pago(parent, conn):
         text="Calcular",
         command=lambda: calcular_campos(conn, combo_clientes.get(), combo_lotes.get(), entry_plan_anual, 
                                         lbl_valor_lote, lbl_valor_total,
-                                        lbl_pago_mensual, lbl_mensualidades, lbl_saldo_actual, lbl_mensualidad_no, lbl_ultima_fecha)
+                                        lbl_pago_mensual, lbl_mensualidades, lbl_saldo_actual, lbl_mensualidad_no, lbl_ultima_fecha, entry_enganche_pagado, entry_monto_recibido)
     )
     btn_calcular.grid(row=18, column=0, columnspan=2, pady=10)
 
@@ -257,12 +257,13 @@ def obtener_lotes(conn):
 # -------------------------------------------------------------------
 # CALCULOS AUTOMÁTICOS
 # -------------------------------------------------------------------
-def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor_lote, lbl_valor_total, lbl_pago_mensual, lbl_mensualidades, lbl_saldo_actual, lbl_mensualidad_no, lbl_ultima_fecha):
+def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor_lote, lbl_valor_total, lbl_pago_mensual, lbl_mensualidades, lbl_saldo_actual, lbl_mensualidad_no, lbl_ultima_fecha, enganche_pagado, monto_recibido):
     """
     1. Obtener el valor base del lote_id_str
     2. Calcular un factor de intereses
     3. Mostrar valor total y pago mensual, etc.
     """
+   
     if not lote_id_str:
         messagebox.showwarning("Advertencia", "Seleccione un lote.")
         return
@@ -290,6 +291,7 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
         messagebox.showerror("Error", f"No se encontró Lote {lote_id}.")
         return
     valor_base = res[0]['valor'] if isinstance(res[0], dict) else res[0][0]
+    valor_total = float(valor_base)
 
     # Convertir plan_anual a float o int
 
@@ -318,10 +320,20 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
     lote_disponible = lote_disponible[0]['valor'] if isinstance(lote_disponible[0], dict) else lote_disponible[0][0]
     propietario_lote = execute_query(conn, 'SELECT propietario FROM lotes WHERE lote_id = %s', (lote_id))
     propietario_lote = propietario_lote[0]['valor'] if isinstance(propietario_lote[0], dict) else propietario_lote[0][0]
+    primer_pago = execute_query(conn, 'SELECT lote_id FROM control_pagos WHERE lote_id = %s', lote_id)
+
+    if not primer_pago:
+        primer_pago = True
+    print(primer_pago)
 
     if not lote_disponible and (propietario_lote != cliente_id):
         messagebox.showerror("Error", "Lote no disponible para su venta.")
         return
+    try:
+        if primer_pago:
+            valor_total = valor_total - float(monto_recibido.get())
+    except:
+        valor_total = valor_total
 
     '''
     --------------------------------------------------
@@ -329,10 +341,8 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
     --------------------------------------------------
     '''
 
-    # EJEMPLO de factor de interés
-    # Factor simple: 10% por cada 5 años
     factor = 1 + (0.13*plan_anual)
-    valor_total = float(valor_base) * factor
+    valor_total = valor_total * factor
 
     # Calcular un pago mensual aproximado
     # Mensualidades = plan_anual * 12
@@ -356,7 +366,7 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
     try:
         saldo_actual = saldo_actual_res[0]['valor'] if isinstance(saldo_actual_res[0], dict) else saldo_actual_res[0][0]
     except:
-        saldo_actual = 0
+        saldo_actual = float(monto_recibido.get())
 
     '''mensualidad_res = execute_query(conn, 'SELECT mensualidad FROM control_pagos WHERE cliente_id = %s AND lote_id = %s ORDER BY mensualidad DESC LIMIT 1', (cliente_id, lote_id))
     
@@ -366,7 +376,13 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
         mensualidad = mensualidad_res[0]['valor'] if isinstance(mensualidad_res[0], dict) else mensualidad_res[0][0]
         mensualidad = int(mensualidad)'''
     
-    mensualidad = int(round(float(saldo_actual)/float(pago_mensual)))
+    if not primer_pago:
+        mensualidad = int(round(float(saldo_actual)/float(pago_mensual)))
+    else:
+        '''
+            CORRECCION ACA
+        '''
+        mensualidad = 0
     if not mensualidad:
         mensualidad = 0
 
@@ -377,6 +393,9 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
     else:
         fecha_ultimo_pago = fecha_ultimo_pago_res[0]['valor'] if isinstance(fecha_ultimo_pago_res[0], dict) else fecha_ultimo_pago_res[0][0]
         fecha_ultimo_pago = fecha_ultimo_pago.strftime("%d/%m/%Y")
+
+    if saldo_actual >= float(5000):
+        enganche_pagado.set('Si')
 
     # Actualizar los labels
     lbl_valor_lote.config(text=f"Q{valor_base:,.2f}")
