@@ -295,7 +295,7 @@ def calcular_campos(conn, cliente_id_str, lote_id_str, plan_anual_str, lbl_valor
 
     plan_str = plan_anual_str.get()
 
-    if ' años' in plan_str:
+    if ' año' in plan_str or ' años' in plan_str:
         plan_str = plan_str.replace(' años', '')
            
 
